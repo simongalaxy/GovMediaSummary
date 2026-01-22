@@ -1,0 +1,13 @@
+[project]
+name = "govmediasummary"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "crawl4ai>=0.8.0",
+    "dotenv>=0.9.9",
+    "psycopg2-binary>=2.9.11",
+    "pydantic>=2.12.5",
+    "sqlmodel>=0.0.31",
+]
