@@ -1,18 +1,23 @@
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode, BrowserConfig, MemoryAdaptiveDispatcher, LLMConfig, LLMExtractionStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 
-from pprint import pprint
-import asyncio, json, re
+from pprint import pformat
+import asyncio, json, re, os
 from pydantic import BaseModel, Field
 from typing import List
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+load_dotenv()
+
+from tools.PostgresDatabase import News
 
 class Summary(BaseModel):
     summary: str = Field(description="content summary")
     
-    
 class NewsSummarizer:
-    def __init__(self):
+    def __init__(self, logger, db_handler):
+        self.logger = logger
+        self.db_handler = db_handler
         self.browser_config = BrowserConfig(
             headless=True,
             text_mode=True,
@@ -27,14 +32,14 @@ class NewsSummarizer:
             cache_mode=CacheMode.BYPASS
         )
         self.llm_config = LLMConfig(
-            provider="ollama/mistral:latest",
+            provider=os.getenv("provider"),    # provider="ollama/mistral:latest"
             temperature=0.1
         )
         self.llm_extraction = LLMExtractionStrategy(
             llm_config=self.llm_config,
             schema=Summary.model_json_schema(),
             extraction_type="schema",
-            instruction="Summarize the content no more than 400 words.",
+            instruction="Summarize the content no more than 500 words.",
             chunk_token_threshold=1200,
             overlap_rate=0.1,
             apply_chunking=True,
@@ -75,29 +80,30 @@ class NewsSummarizer:
         return news_links
     
     
-    async def crawl_news_pages(self, urls: list[str]):
+    async def crawl_news_pages(self, urls: list[str]) -> None:
         async with AsyncWebCrawler(config=self.browser_config) as crawler:
             results = await crawler.arun_many(
                 urls=urls,
                 config=self.crawl_config_newsPage,
                 dispatcher=self.dispatcher
             )
-            dicts = []
+            # dicts = []
             for i, result in enumerate(results, start=1):
                 if result.success:
-                    dict = {
-                        "id": result.url.split("/")[-1].split(".")[0],
-                        "url": result.url,
-                        "title": result.metadata["title"],
-                        "date": result.markdown.split("\n")[-4].split(", ", 1)[-1].strip(),
-                        "time": result.markdown.split("\n")[-3].split(" ")[-2],
-                        "content": result.markdown,
-                        "summary": self.consolidate_summary(result=result)
-                    }
-                    print(f"No. {i}:")
-                    pprint(dict)
-        
-        return dicts
+                    news_item = News(
+                        id=result.url.split("/")[-1].split(".")[0],
+                        url=result.url,
+                        title=result.metadata["title"],
+                        date=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip(),
+                        time=result.markdown.split("\n")[-3].split(" ")[-2],
+                        content=result.markdown,
+                        summary=self.consolidate_summary(result=result)
+                    )
+                    # dicts.append(dict)
+                    self.db_handler.create_News(news_item=news_item)
+                    self.logger.info(f"No. {i}: \n%s", pformat(news_item.model_dump(), indent=2))
+            
+        return None
     
     
     def generate_date_range(self, startDate: str, endDate: str) -> list[str]:
@@ -110,23 +116,25 @@ class NewsSummarizer:
             dates.append(current.strftime("%Y%m%d"))
             current += timedelta(days=1)
         
+        self.logger.info(f"Generated date range from {startDate} to {endDate}: {dates}")
+        
         return dates
     
     
     def generate_date_urls(self, startDate: str, endDate: str) -> list[str]:
         dates = self.generate_date_range(startDate=startDate, endDate=endDate)
         urls = [f"https://www.info.gov.hk/gia/general/{date[:-2]}/{date[-2:]}.htm" for date in dates]
+        self.logger.info(f"Generated {len(urls)} date URLs: {urls}")
         
         return urls
 
     def consolidate_summary(self, result) -> list[str]:
-        
         summary_text = []
         for item in json.loads(result.extracted_content):
             try:
                 summary_text.append(item["summary"])
             except KeyError:
-                print("Missing summary key:", item)
+                self.logger.info("Missing summary key:", item)
                 summary_text.append("")   # or skip it
 
         return summary_text
