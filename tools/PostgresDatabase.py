@@ -54,7 +54,7 @@ class PostgresDBHandler:
                 session.add(news_item)
                 session.commit()
                 session.refresh(news_item)
-                self.logger.info(f"News - id: {news_item.id}) saved to sqlite3.")
+                self.logger.info(f"News - id: {news_item.id} saved to Postgresql database.")
             else:
                 self.logger.info(f"News - id: {news_item.id} item already existed in database. No saving action taken.")   
         

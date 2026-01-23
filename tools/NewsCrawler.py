@@ -1,3 +1,4 @@
+from unittest import result
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode, BrowserConfig, MemoryAdaptiveDispatcher, LLMConfig, LLMExtractionStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 
@@ -13,8 +14,8 @@ from tools.PostgresDatabase import News
 
 class Summary(BaseModel):
     summary: str = Field(description="content summary")
-    
-class NewsSummarizer:
+
+class NewsCrawler:
     def __init__(self, logger, db_handler):
         self.logger = logger
         self.db_handler = db_handler
@@ -54,7 +55,8 @@ class NewsSummarizer:
             exclude_social_media_domains=True,
             target_elements=['div[id="PRHeadline"]', 'span[id="pressrelease"]'],
             cache_mode=CacheMode.BYPASS,
-            extraction_strategy=self.llm_extraction
+            extraction_strategy=self.llm_extraction,
+            stream=True # Enable streaming 
         )
         self.dispatcher = MemoryAdaptiveDispatcher(
             memory_threshold_percent=70,
@@ -78,17 +80,16 @@ class NewsSummarizer:
                         news_links.append(link["href"])
         
         return news_links
-    
-    
+   
+ 
     async def crawl_news_pages(self, urls: list[str]) -> None:
         async with AsyncWebCrawler(config=self.browser_config) as crawler:
-            results = await crawler.arun_many(
+            async for result in await crawler.arun_many(
                 urls=urls,
                 config=self.crawl_config_newsPage,
                 dispatcher=self.dispatcher
-            )
-            # dicts = []
-            for i, result in enumerate(results, start=1):
+            ):
+            
                 if result.success:
                     news_item = News(
                         id=result.url.split("/")[-1].split(".")[0],
@@ -97,11 +98,12 @@ class NewsSummarizer:
                         date=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip(),
                         time=result.markdown.split("\n")[-3].split(" ")[-2],
                         content=result.markdown,
-                        summary=self.consolidate_summary(result=result)
+                        summary=" ".join(self.consolidate_summary(result=result))
                     )
-                    # dicts.append(dict)
                     self.db_handler.create_News(news_item=news_item)
-                    self.logger.info(f"No. {i}: \n%s", pformat(news_item.model_dump(), indent=2))
+                    self.logger.info(f"News: \n%s", pformat(news_item.model_dump(), indent=2))
+                else:
+                    self.logger.error(f"Failed to crawl URL: {result.url}")
             
         return None
     
@@ -128,6 +130,7 @@ class NewsSummarizer:
         
         return urls
 
+
     def consolidate_summary(self, result) -> list[str]:
         summary_text = []
         for item in json.loads(result.extracted_content):
@@ -138,3 +141,31 @@ class NewsSummarizer:
                 summary_text.append("")   # or skip it
 
         return summary_text
+    
+    
+    # async def crawl_news_pages(self, urls: list[str]) -> None:
+    #     async with AsyncWebCrawler(config=self.browser_config) as crawler:
+    #         results = await crawler.arun_many(
+    #             urls=urls,
+    #             config=self.crawl_config_newsPage,
+    #             dispatcher=self.dispatcher
+    #         )
+    #         # dicts = []
+    #         for i, result in enumerate(results, start=1):
+    #             if result.success:
+    #                 news_item = News(
+    #                     id=result.url.split("/")[-1].split(".")[0],
+    #                     url=result.url,
+    #                     title=result.metadata["title"],
+    #                     date=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip(),
+    #                     time=result.markdown.split("\n")[-3].split(" ")[-2],
+    #                     content=result.markdown,
+    #                     summary=self.consolidate_summary(result=result)
+    #                 )
+    #                 # dicts.append(dict)
+    #                 self.db_handler.create_News(news_item=news_item)
+    #                 self.logger.info(f"No. {i}: \n%s", pformat(news_item.model_dump(), indent=2))
+                # else:
+                #     self.logger.error(f"Failed to crawl URL: {result.url}")
+            
+    #     return None
