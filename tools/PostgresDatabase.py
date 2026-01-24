@@ -3,7 +3,7 @@ from sqlmodel import SQLModel, Field, create_engine, Session, select, inspect
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import ARRAY
 
-
+from datetime import date, time
 from pprint import pformat
 import os
 from dotenv import load_dotenv
@@ -14,10 +14,10 @@ class News(SQLModel, table=True):
     id: str = Field(primary_key=True, unique=True) # 👈 Enforce uniqueness
     url: str
     title: str = Field(description="title of the news article.")
-    date: Optional[str] = Field(default=None, description="publish date of the news article.")
-    time: Optional[str] = Field(default=None, description="publish time of the news article.")  
-    content: Optional[str] = Field(default=None, description="Raw data of news article.")
-    summary: Optional[str] = Field(default=None, description="summary of the news article.")
+    pub_date: date = Field(description="publish date of the news article.")
+    pub_time: time = Field(description="publish time of the news article.")  
+    content: str = Field(description="Raw data of news article.")
+    summary: str = Field(description="summary of the news article.")
     
 
 class PostgresDBHandler:
@@ -60,45 +60,11 @@ class PostgresDBHandler:
         
         return None
 
+
     def list_all_News(self):
         with Session(self.engine) as session:
             return session.exec(select(News)).all()
     
-    
-    def save_News_to_db(self, news_list) -> None:
-        # save all crawled data:
-        self.logger.info("Save crawled data into Postgresql DB.")
-        for news in news_list:
-            news_item = News(**news)
-            self.logger.info(f"news_item: \n%s", pformat(news_item.model_dump(), indent=2))
-            self.create_News(news_item=news_item)
-        
-        self.logger.info(f"Saved total {len(news_list)} news into Postgresql.")
-        
-        return None
-
-    # def update_News(self, id: str, update_data: dict):
-    #     with Session(self.engine) as session:
-    #         db_News = session.get(News, id)
-    #         if not db_News:
-    #             return None
-    #         for key, value in update_data.items():
-    #             setattr(db_News, key, value)
-    #         session.add(db_News)
-    #         session.commit()
-    #         session.refresh(db_News)
-
-    #         return
-
-    # def delete_News(self, id: str):
-    #     with Session(self.engine) as session:
-    #         db_News = session.get(News, id)
-    #         if db_News:
-    #             session.delete(db_News)
-    #             session.commit()
-    #             return True
-    #         return False
-
 
  
             

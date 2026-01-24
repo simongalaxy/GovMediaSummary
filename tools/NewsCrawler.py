@@ -64,7 +64,7 @@ class NewsCrawler:
             max_session_permit=3
         )
     
-    
+    # crawling functions.
     async def crawl_date_pages(self, urls: list[str]):
         async with AsyncWebCrawler(config=self.browser_config) as crawler:
             results = await crawler.arun_many(
@@ -95,8 +95,8 @@ class NewsCrawler:
                         id=result.url.split("/")[-1].split(".")[0],
                         url=result.url,
                         title=result.metadata["title"],
-                        date=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip(),
-                        time=result.markdown.split("\n")[-3].split(" ")[-2],
+                        pub_date=self.transform_text_to_date(result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
+                        pub_time=self.transform_text_to_time(result.markdown.split("\n")[-3].split(" ")[-2]),
                         content=result.markdown,
                         summary=" ".join(self.consolidate_summary(result=result))
                     )
@@ -107,7 +107,7 @@ class NewsCrawler:
             
         return None
     
-    
+    # data processing functions.
     def generate_date_range(self, startDate: str, endDate: str) -> list[str]:
         start_date = datetime.strptime(startDate, "%Y%m%d")
         end_date = datetime.strptime(endDate, "%Y%m%d")
@@ -141,31 +141,21 @@ class NewsCrawler:
                 summary_text.append("")   # or skip it
 
         return summary_text
+
+
+    def transform_text_to_date(self, date_str: str) -> str:
+        try:
+            date_obj = datetime.strptime(date_str, "%B %d, %Y")
+            return date_obj.strftime("%Y-%m-%d")
+        except ValueError as e:
+            self.logger.error(f"Date conversion error for '{date_str}': {e}")
+            return date_str
     
     
-    # async def crawl_news_pages(self, urls: list[str]) -> None:
-    #     async with AsyncWebCrawler(config=self.browser_config) as crawler:
-    #         results = await crawler.arun_many(
-    #             urls=urls,
-    #             config=self.crawl_config_newsPage,
-    #             dispatcher=self.dispatcher
-    #         )
-    #         # dicts = []
-    #         for i, result in enumerate(results, start=1):
-    #             if result.success:
-    #                 news_item = News(
-    #                     id=result.url.split("/")[-1].split(".")[0],
-    #                     url=result.url,
-    #                     title=result.metadata["title"],
-    #                     date=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip(),
-    #                     time=result.markdown.split("\n")[-3].split(" ")[-2],
-    #                     content=result.markdown,
-    #                     summary=self.consolidate_summary(result=result)
-    #                 )
-    #                 # dicts.append(dict)
-    #                 self.db_handler.create_News(news_item=news_item)
-    #                 self.logger.info(f"No. {i}: \n%s", pformat(news_item.model_dump(), indent=2))
-                # else:
-                #     self.logger.error(f"Failed to crawl URL: {result.url}")
-            
-    #     return None
+    def transform_text_to_time(self, time_str: str) -> str:
+        try:
+            time_obj = datetime.strptime(time_str, "%H:%M")
+            return time_obj.strftime("%H:%M:%S")
+        except ValueError as e:
+            self.logger.error(f"Time conversion error for '{time_str}': {e}")
+            return time_str
