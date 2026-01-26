@@ -59,9 +59,9 @@ class NewsCrawler:
             stream=True # Enable streaming 
         )
         self.dispatcher = MemoryAdaptiveDispatcher(
-            memory_threshold_percent=70,
+            memory_threshold_percent=75,
             check_interval=1,
-            max_session_permit=3
+            max_session_permit=4
         )
     
     # crawling functions.

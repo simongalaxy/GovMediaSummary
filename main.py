@@ -15,8 +15,8 @@ def main():
     crawler = NewsCrawler(logger=logger, db_handler=DBHandler)
     
     # generate urls by date range.
-    startDate = "20260110"
-    endDate = "20260122"
+    startDate = "20260109"
+    endDate = "20260126"
     urls = crawler.generate_date_urls(startDate=startDate, endDate=endDate)
     
     # crawl page links of press release.
