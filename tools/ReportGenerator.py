@@ -38,39 +38,39 @@ class ReportGenerator:
             {content}
             """
         )
-        
         self.logger.info("Report Generator initiated.")
     
+    
+    def query_to_db(self, query: dict):
+        
+        # classify question by query key.
+        if query.keys == "date":
+            self.logger.info(query.values)
+            query_str = """SELECT content FROM public.news WHERE pub_date::date = '{query.values}'"""
+        elif query.keys == "organization":
+            pattern = f"%{query.values}%"
+            query_str = f"""SELECT content FROM public.news WHERE organization LIKE '{pattern}' OR keywords LIKE '{pattern}'"""
+        else:
+            pattern = f"%{query.values}%"
+            query_str = f"""SELECT content FROM public.news WHERE keywords LIKE '{pattern}'"""
+        
+        # query to DB.
+        result = self.db.run(query_str)
+        content = "\n".join(t[0] for t in ast.literal_eval(result) if t[0] is not None)
+        
+        return content
+    
       
-    def generate_media_summary_by_date(self, date):
-        # query to db to get data.
-        query_str = """SELECT content FROM public.news WHERE pub_date::date = '{date}'"""
-        result = self.db.run(query_str)
-        content = "\n".join(t[0] for t in ast.literal_eval(result) if t[0] is not None)
+    def generate_report(self, query:dict):
+        
+        content = self.query_to_db(query=query)
         
         # set up llm chain.
         report_chain = self.report_prompt | self.llm
         report = report_chain.invoke({"content": content})
         
-        return report.content
+        self.logger.info(report.content)
+        
+        return
     
     
-    def generate_media_summary_by_organization(self, organization):
-        # query to db to get data.
-        pattern = f"%{organization}%"
-
-        query_str = f"""
-        SELECT content
-        FROM public.news
-        WHERE organization LIKE '{pattern}'
-        OR keywords LIKE '{pattern}'
-        """
-
-        result = self.db.run(query_str)
-        content = "\n".join(t[0] for t in ast.literal_eval(result) if t[0] is not None)
-        
-        # set up llm chain.
-        report_chain = self.report_prompt | self.llm
-        report = report_chain.invoke({"content": content})
-        
-        return report.content
