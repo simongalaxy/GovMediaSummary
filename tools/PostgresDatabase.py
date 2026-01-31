@@ -15,9 +15,11 @@ class News(SQLModel, table=True):
     url: str
     title: str = Field(description="title of the news article.")
     pub_date: date = Field(description="publish date of the news article.")
-    pub_time: time = Field(description="publish time of the news article.")  
+    pub_time: time = Field(description="publish time of the news article.") 
+    organization: str = Field(description="publishing organization")
     content: str = Field(description="Raw data of news article.")
     summary: str = Field(description="summary of the news article.")
+    keywords: list[str] = Field(sa_column=Column(ARRAY(String)), description="maximum 5 keywords of content.")
     
 
 class PostgresDBHandler:

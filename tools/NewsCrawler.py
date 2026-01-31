@@ -6,14 +6,16 @@ from pprint import pformat
 import asyncio, json, re, os
 from pydantic import BaseModel, Field
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 from dotenv import load_dotenv
 load_dotenv()
 
 from tools.PostgresDatabase import News
 
 class Summary(BaseModel):
-    summary: str = Field(description="content summary")
+    summary: str = Field(description="Summary of content no more than 700 words")
+    keywords: list[str] = Field(description="5 keywords of the content")
+    organization: str = Field(description="Subject Department or Bureau")
 
 class NewsCrawler:
     def __init__(self, logger, db_handler):
@@ -40,7 +42,7 @@ class NewsCrawler:
             llm_config=self.llm_config,
             schema=Summary.model_json_schema(),
             extraction_type="schema",
-            instruction="Summarize the content no more than 500 words.",
+            instruction="Summarize the content and extract the items.",
             chunk_token_threshold=1200,
             overlap_rate=0.1,
             apply_chunking=True,
@@ -91,14 +93,24 @@ class NewsCrawler:
             ):
             
                 if result.success:
+                    try:
+                        data = json.loads(result.extracted_content)[0]
+                    except Exception as e:
+                        self.logger.error(f"JSON loading error: {e}")
+                    if not data:
+                        self.logger.error(f"No data extracted from url: {result.url}")
+                        continue
+                    
                     news_item = News(
                         id=result.url.split("/")[-1].split(".")[0],
                         url=result.url,
                         title=result.metadata["title"],
                         pub_date=self.transform_text_to_date(result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
                         pub_time=self.transform_text_to_time(result.markdown.split("\n")[-3].split(" ")[-2]),
+                        organization=data.get("organization"),
                         content=result.markdown,
-                        summary=" ".join(self.consolidate_summary(result=result))
+                        summary=data.get("summary"),
+                        keywords=data.get("keywords")
                     )
                     self.db_handler.create_News(news_item=news_item)
                     self.logger.info(f"News: \n%s", pformat(news_item.model_dump(), indent=2))
