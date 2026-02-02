@@ -1,12 +1,11 @@
-from pprint import pformat
+from langchain_ollama import ChatOllama
+from langchain_classic.prompts import PromptTemplate
+
 import os
+import json
 from dotenv import load_dotenv
 load_dotenv()
-import ast
 
-from langchain_ollama import ChatOllama
-from langchain_community.utilities.sql_database import SQLDatabase
-from langchain_classic.prompts import PromptTemplate
 
 class ReportGenerator:
     def __init__(self, logger):
@@ -14,63 +13,63 @@ class ReportGenerator:
         # declaring logger.
         self.logger = logger
         
-        # declare database connection parameters.
-        self.username = os.getenv("username")
-        self.password = os.getenv("password")
-        self.host = os.getenv("host")
-        self.port = os.getenv("port")
-        self.db_name = os.getenv("db_name")
-        self.db_uri = f"postgresql+psycopg2://{self.username}:{self.password}@{self.host}:{self.port}/{self.db_name}"
-        self.db = SQLDatabase.from_uri(self.db_uri)
-        
         # set up llm.
         self.model_name = os.getenv("OLLAMA_LLM_MODEL")
-        self.llm = ChatOllama(model=self.model_name, temperature=0.7)
+        self.llm = ChatOllama(model=self.model_name, temperature=0.2)
         
-        # set up prompt template for generating report.
-        self.report_prompt = PromptTemplate(
-            input_variables=["content"],
+        # set up prompt template.
+        self.template = PromptTemplate(
+            input_variables=["sql", "rows"], 
             template="""
-            You are media research analyst. Summarize the content and group them by organization(s) or topic. 
-            Use only the data provided in the content.
+            You are an expert analyst. 
             
-            content:
-            {content}
-            """
-        )
+            SQL query: 
+            {sql} 
+            
+            Query results: 
+            {rows} 
+            
+            Tasks: 
+            1. Group by organization(s) or topic(s). 
+            2. Summaries ≤ 500 words per group. 
+            3. Provide cross-group patterns. 
+            4. Provide follow-up analyses. 
+            
+            Output sections: 
+            - Grouped Summaries 
+            - Cross-Group Patterns 
+            - Suggested Follow-Ups 
+            
+            """ ) 
+        
         self.logger.info("Report Generator initiated.")
+
+
+    async def generate_report(self, sql: str, rows): 
+        prompt = self.template.format(
+            sql=sql, 
+            rows=json.dumps(rows, indent=2) 
+        ) 
+        return await self.llm.ainvoke(prompt)
     
     
-    def query_to_db(self, query: dict):
         
-        # classify question by query key.
-        if query.keys == "date":
-            self.logger.info(query.values)
-            query_str = """SELECT content FROM public.news WHERE pub_date::date = '{query.values}'"""
-        elif query.keys == "organization":
-            pattern = f"%{query.values}%"
-            query_str = f"""SELECT content FROM public.news WHERE organization LIKE '{pattern}' OR keywords LIKE '{pattern}'"""
-        else:
-            pattern = f"%{query.values}%"
-            query_str = f"""SELECT content FROM public.news WHERE keywords LIKE '{pattern}'"""
         
-        # query to DB.
-        result = self.db.run(query_str)
-        content = "\n".join(t[0] for t in ast.literal_eval(result) if t[0] is not None)
         
-        return content
-    
+        
+## old code
       
-    def generate_report(self, query:dict):
+    # def generate_report(self, query:dict) -> str:
         
-        content = self.query_to_db(query=query)
+    #     content = self.query_to_db(query=query)
         
-        # set up llm chain.
-        report_chain = self.report_prompt | self.llm
-        report = report_chain.invoke({"content": content})
+    #     # set up llm chain.
+    #     report_chain = self.report_prompt | self.llm
+    #     report = report_chain.invoke({"content": content})
+    #     self.logger.info(f"Summary: \n%s", report.content)
         
-        self.logger.info(report.content)
-        
-        return
+    #     return report.content
     
+
+                
     
