@@ -45,12 +45,12 @@ class ReportGenerator:
         self.logger.info("Report Generator initiated.")
 
 
-    async def generate_report(self, sql: str, rows): 
+    def generate_report(self, sql: str, rows): 
         prompt = self.template.format(
             sql=sql, 
             rows=json.dumps(rows, indent=2) 
         ) 
-        return await self.llm.ainvoke(prompt)
+        return self.llm.invoke(prompt)
     
     
         
