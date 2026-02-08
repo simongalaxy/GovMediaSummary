@@ -30,8 +30,9 @@ class PostgresDBHandler:
         self.host = os.getenv("host")
         self.port = os.getenv("port")
         self.db_name = os.getenv("db_name")
-        self.postgres_url = f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.db_name}"
-        self.engine=create_engine(self.postgres_url)
+        self.postgres_uri = f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.db_name}"
+        # self.uri = 'postgresql://neondb_owner:npg_f8opUevkqJa4@ep-square-glade-a1tzxo0z-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+        self.engine=create_engine(self.postgres_uri)
         
         self.logger.info(f"Class - {PostgresDBHandler.__name__} initiated.")
         

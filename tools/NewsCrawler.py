@@ -67,7 +67,7 @@ class NewsCrawler:
         self.dispatcher = MemoryAdaptiveDispatcher(
             memory_threshold_percent=80,
             check_interval=1,
-            max_session_permit=4
+            max_session_permit=3
         )
     
     # crawling functions.
