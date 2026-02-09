@@ -1,6 +1,8 @@
-from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
+import chromadb
+# from ollama import embeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from datetime import datetime
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -9,59 +11,103 @@ load_dotenv()
 class ChromaDBHandler:
     def __init__(self, logger):
         self.logger = logger
-        self.model = os.getenv("OLLAMA_EMBEDDINGS_MODEL")
-        self.embeddings = OllamaEmbeddings(model=self.model)
-        self.vector_store = Chroma(
-            collection_name=os.getenv("collection_name"),
-            embedding_function=self.embeddings,
-            persist_directory=os.getenv("chromadb_path"),
+        # embedding config.
+        # self.model = os.getenv("OLLAMA_EMBEDDINGS_MODEL")
+        
+        # chromaDB config.
+        self.collection_name = os.getenv("collection_name")
+        self.db_path = os.getenv("chromadb_path")
+        self.client = chromadb.PersistentClient(path=self.db_path)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            # embedding_function=embeddings(self.model)
         )
-     
+        
+        # text_splitter config.
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            separators=["\n\n", "\n"],
+            chunk_size=500,
+            chunk_overlap=50
+        )
+        
+        self.logger.info(f"{ChromaDBHandler.__name__} initiated.")
+    
+    
+    # split text.
+    def split_text_from_news(self, content: str):
+        all_splits = self.text_splitter.split_text(text=content)
+        self.logger.info(f"{ChromaDBHandler.__name__}: Split content into {len(all_splits)} sub-texts.")
+        
+        for i, split in enumerate(all_splits, start=1):
+            self.logger.info(f"Split No. {i}: \n{split}")
+        self.logger.info("-"*50)
+        
+        return all_splits
+    
+    
+    def transform_text_to_date(self, date_str: str) -> str:
+        try:
+            date_obj = datetime.strptime(date_str, "%B %d, %Y")
+            return date_obj.strftime("%Y-%m-%d")
+        except ValueError as e:
+            self.logger.error(f"Date conversion error for '{date_str}': {e}")
+            return date_str
+
+
+    def transform_text_to_time(self, time_str: str) -> str:
+        try:
+            time_obj = datetime.strptime(time_str, "%H:%M")
+            return time_obj.strftime("%H:%M:%S")
+        except ValueError as e:
+            self.logger.error(f"Time conversion error for '{time_str}': {e}")
+            return time_str
+    
+    # prepare ids, splited_docs and metadatas from result.
+    # def create_and_save_result_to_db(self, result):
+    #     # prepare all splits from content.
+    #     all_splits = self.split_text_from_news(content=result.markdown)
+        
+    #     # prepare splitted documents.
+    #     ids = []
+    #     splited_docs = []
+    #     metadatas = []
+        
+    #     news_id = result.url.split("/")[-1].split(".")[0]
+        
+    #     for i, split in enumerate(all_splits):
+    #         id=f"{news_id}#chunk={i}"
+    #         metadata={
+    #             "news_id": news_id,
+    #             "title": result.metadata["title"],
+    #             "url": result.url,
+    #             "pub_date": transform_text_to_date(date_str=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
+    #             "pub_time": transform_text_to_time(time_str=result.markdown.split("\n")[-3].split(" ")[-2]),
+    #         }
+    #         ids.append(id)
+    #         metadatas.append(metadata)
+            
+    #     self.logger.info(f"{ChromaDBHandler.__name__}: Total {len(all_splits)} splited documents for Press Release - Title: {result.metadata["title"]}, news_id: {news_id} created.")
+    #     self.add_splits_to_db(
+    #         ids=ids,
+    #         splited_docs=splited_docs,
+    #         metadatas=metadatas
+    #     )
+        
+    #     return
+    
+
     # save splits to chromaDB.   
-    def add_splits_to_db(self, documents):
-        news_id = documents[0].metadata["news_id"]
-        # self.logger.info(f"News id: {news_id}")
-        # existing = self.collection.query()
-        # )
+    def add_splits_to_db(self, ids, documents, metadatas):
+        self.collection.add(
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas
+        )
         
-        # # check whether the documents have already exist and delete it if exists.
-        # if existing["ids"]:
-        #     self.vector_store.delete(ids=existing["ids"])
-        #     self.logger.info(f"{ChromaDBHandler.__name__}: Removed {len(existing["ids"])} old chunks for id={id}")
-        
-        # insert new chunks.
-        news_ids = [doc.id for doc in documents]
-        self.vector_store.add_documents(documents=documents, ids=news_ids)
-        self.logger.info(f"{ChromaDBHandler.__name__}: added {len(news_ids)} new chunks for id={news_id}")
-        # self.logger.info(f"{ChromaDBHandler.__name__}: Added {len(existing["ids"])} new chunks for id={id}")
-       
+        self.logger.info(f"{ChromaDBHandler.__name__}: added {len(documents)} new chunks for id={metadatas[0]["news_id"]}")
+
         return
     
+    
     # retriever.
-    def retrieve_documents_from_chromadb(self):
-        return self.vector_store.as_retriever(
-            search_type="mmr",
-            search_kwargs={
-                "k": 10,
-                "fetch_k": 20
-            }
-        )
     
-    def get_unique_ids_from_metadata(self):
-        results = self.vector_store.get()
-        all_ids = [item["news_id"] for item in results["metadatas"]]
-        
-        return list(set(all_ids))
-    
-    
-    def get_all_splits_by_id(self, metadata_id: str):
-        results = self.vector_store.get(where={"id": metadata_id})
-        
-        return [
-            {
-                "chunk_id": chunk_id,
-                "content": content,
-                "metadata": meta
-            }
-            for chunk_id, content, meta in zip(results["ids"], results["documents"], results["metadatas"])
-        ]
