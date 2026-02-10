@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, date, time
 from dotenv import load_dotenv
 load_dotenv()
 
-# from tools.PostgresDatabase import News
 
 class Summary(BaseModel):
     title: str = Field(description="title of the content")
@@ -72,7 +71,19 @@ class NewsCrawler:
     
     # crawling functions.
     async def crawl_date_pages(self, urls: list[str]):
-        async with AsyncWebCrawler(config=self.browser_config) as crawler:
+        async with AsyncWebCrawler(
+            config=self.browser_config,
+            max_concurrency=3, 
+            headless=True, 
+            disable_images=True, 
+            disable_css=True, 
+            disable_scripts=True, 
+            disable_pdf=True, 
+            disable_video=True, 
+            disable_audio=True, 
+            extraction_mode="light",
+            ) as crawler:
+            
             results = await crawler.arun_many(
                 urls=urls,
                 config=self.crawl_config_datePage,
@@ -89,7 +100,18 @@ class NewsCrawler:
  
 
     async def crawl_news_pages(self, urls: list[str]) -> None:
-        async with AsyncWebCrawler(config=self.browser_config) as crawler:
+        async with AsyncWebCrawler(
+            config=self.browser_config,
+            max_concurrency=3, 
+            headless=True, 
+            disable_images=True, 
+            disable_css=True, 
+            disable_scripts=True, 
+            disable_pdf=True, 
+            disable_video=True, 
+            disable_audio=True, 
+            extraction_mode="light") as crawler:
+            
             async for result in await crawler.arun_many(
                 urls=urls,
                 config=self.crawl_config_newsPage,
@@ -99,56 +121,12 @@ class NewsCrawler:
                 if result.success:
                     try:
                         data = json.loads(result.extracted_content)[0]
+                        self.db_handler.create_and_save_result_to_db(data=data, result=result)
                     except Exception as e:
                         self.logger.error(f"JSON loading error: {e}")
                     if not data:
                         self.logger.error(f"No data extracted from url: {result.url}")
                         continue
-                    
-                    # save to chromadb.
-                    all_splits = self.db_handler.split_text_from_news(content=result.markdown)
-                    
-                    # prepare splitted documents.
-                    ids = []
-                    metadatas = []
-                    
-                    news_id = result.url.split("/")[-1].split(".")[0]
-                    
-                    for i, split in enumerate(all_splits):
-                        id=f"{news_id}#chunk={i}"
-                        metadata={
-                            "news_id": news_id,
-                            "url": result.url,
-                            "title": data.get("title"), #result.metadata["title"],
-                            "pub_date": data.get("pub_date"), #transform_text_to_date(date_str=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
-                            "pub_time": data.get("pub_time"), #transform_text_to_time(time_str=result.markdown.split("\n")[-3].split(" ")[-2]),
-                            "organization": data.get("organization"),
-                            "keywords": data.get("keywords"),
-                            "summary": data.get("summary"),
-                            "chunk": i
-                        }
-                        ids.append(id)
-                        metadatas.append(metadata)
-                    
-                    self.logger.info(f"Total {len(all_splits)} splited documents for Press Release - Title: {result.metadata["title"]}, news_id: {news_id} created.")
-                    self.db_handler.add_splits_to_db(
-                        ids=ids,
-                        documents=all_splits,
-                        metadatas=metadatas
-                    )
-                    # news_item = News(
-                    #     id=result.url.split("/")[-1].split(".")[0],
-                    #     url=result.url,
-                    #     title=data.get("title"), #result.metadata["title"],
-                    #     pub_date=data.get("pub_date"), #self.transform_text_to_date(result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
-                    #     pub_time=data.get("pub_time"), #self.transform_text_to_time(result.markdown.split("\n")[-3].split(" ")[-2]),
-                    #     organization=data.get("organization"),
-                    #     summary=data.get("summary"),
-                    #     keywords=data.get("keywords"),
-                    #     content=result.markdown
-                    # )
-                    # # self.db_handler.create_News(news_item=news_item)
-                    # self.logger.info(f"News: \n%s", pformat(news_item.model_dump(), indent=2))
                 else:
                     self.logger.error(f"Failed to crawl URL: {result.url}")
             

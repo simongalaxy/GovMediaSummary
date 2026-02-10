@@ -8,6 +8,9 @@ wheels/
 logs/
 reports/
 .env
+chroma_news_db/
+.sqlite3
+.vscode/
 
 # Virtual environments
 .venv
