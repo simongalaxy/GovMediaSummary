@@ -13,7 +13,7 @@ load_dotenv()
 
 class Summary(BaseModel):
     title: str = Field(description="title of the content")
-    organization: str = Field(description="organization issued the content")
+    organization: str = Field(description="subject organization issued the content")
     pub_date: date = Field(description="date issued the content")
     pub_time: time = Field(description="time issued the content")
     keywords: list[str] = Field(description="Maximun 5 content keywords")
