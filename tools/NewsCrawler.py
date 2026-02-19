@@ -10,14 +10,13 @@ from datetime import datetime, timedelta, date, time
 from dotenv import load_dotenv
 load_dotenv()
 
-
-class Summary(BaseModel):
+class Metadata(BaseModel):
     title: str = Field(description="title of the content")
-    organization: str = Field(description="subject organization issued the content")
+    organization: list[str] = Field(description="subject organization(s) issued the content")
     pub_date: date = Field(description="date issued the content")
     pub_time: time = Field(description="time issued the content")
     keywords: list[str] = Field(description="Maximun 5 content keywords")
-    summary: str = Field(description="Summary of key points no more than 700 words")
+    summary: str = Field(description="Summary of key points from content")
     
    
 class NewsCrawler:
@@ -43,7 +42,7 @@ class NewsCrawler:
         )
         self.llm_extraction = LLMExtractionStrategy(
             llm_config=self.llm_config,
-            schema=Summary.model_json_schema(),
+            schema=Metadata.model_json_schema(),
             extraction_type="schema",
             instruction="Extract the following items.",
             chunk_token_threshold=1200,
@@ -58,7 +57,7 @@ class NewsCrawler:
             exclude_all_images=True,
             exclude_external_links=True,
             exclude_social_media_domains=True,
-            target_elements=['div[id="PRHeadline"]', 'span[id="pressrelease"]'],
+            target_elements=['span[id="PRHeadlineSpan"]', 'span[id="pressrelease"]'],
             cache_mode=CacheMode.BYPASS,
             extraction_strategy=self.llm_extraction,
             stream=True # Enable streaming 
@@ -70,7 +69,7 @@ class NewsCrawler:
         )
     
     # crawling functions.
-    async def crawl_date_pages(self, urls: list[str]):
+    async def _crawl_date_pages(self, urls: list[str]):
         async with AsyncWebCrawler(
             config=self.browser_config,
             max_concurrency=3, 
@@ -99,7 +98,7 @@ class NewsCrawler:
         return news_links
  
 
-    async def crawl_news_pages(self, urls: list[str]) -> None:
+    async def _crawl_news_pages(self, urls: list[str]) -> None:
         async with AsyncWebCrawler(
             config=self.browser_config,
             max_concurrency=3, 
@@ -134,7 +133,7 @@ class NewsCrawler:
     
     
     # data processing functions.
-    def generate_date_range(self, startDate: str, endDate: str) -> list[str]:
+    def _generate_date_range(self, startDate: str, endDate: str) -> list[str]:
         start_date = datetime.strptime(startDate, "%Y%m%d")
         end_date = datetime.strptime(endDate, "%Y%m%d")
         
@@ -149,9 +148,21 @@ class NewsCrawler:
         return dates
     
     
-    def generate_date_urls(self, startDate: str, endDate: str) -> list[str]:
-        dates = self.generate_date_range(startDate=startDate, endDate=endDate)
+    def _generate_date_urls(self, startDate: str, endDate: str) -> list[str]:
+        dates = self._generate_date_range(startDate=startDate, endDate=endDate)
         urls = [f"https://www.info.gov.hk/gia/general/{date[:-2]}/{date[-2:]}.htm" for date in dates]
         self.logger.info(f"Generated {len(urls)} date URLs: {urls}")
         
         return urls
+
+
+    def fetch_news_by_dates(self, startDate: str, endDate: str) -> None:
+        urls = self._generate_date_urls(startDate=startDate, endDate=endDate)
+    
+        # crawl page links of press release.
+        news_links = asyncio.run(self._crawl_date_pages(urls=urls))
+        
+        # get the data dictionaries from press releases and save results to chromadb.
+        asyncio.run(self._crawl_news_pages(urls=news_links))
+        
+        return

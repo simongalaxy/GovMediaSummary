@@ -1,4 +1,5 @@
 import chromadb
+from chromadb.utils.embedding_functions.ollama_embedding_function import OllamaEmbeddingFunction
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from pprint import pformat
@@ -12,11 +13,22 @@ class ChromaDBHandler:
     def __init__(self, logger):
         self.logger = logger
         
+        # embedding config.
+        self.embedding_model = os.getenv("ollama_embedding_model")
+        self.embedding_function = OllamaEmbeddingFunction(
+            url="http://localhost:11434",
+            model_name=self.embedding_model
+        )
+        
         # chromaDB config.
         self.collection_name = os.getenv("collection_name")
         self.db_path = os.getenv("chromadb_path")
         self.client = chromadb.PersistentClient(path=self.db_path)
-        self.collection = self.client.get_or_create_collection(name=self.collection_name)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            embedding_function=self.embedding_function,
+            metadata={"description": "Collection to store government press releases."}
+        )
         
         # text_splitter config.
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -29,7 +41,7 @@ class ChromaDBHandler:
     
     
     # split text.
-    def split_text_from_news(self, content: str):
+    def _split_text_from_news(self, content: str):
         all_splits = self.text_splitter.split_text(text=content)
         self.logger.info(f"{ChromaDBHandler.__name__}: Split content into {len(all_splits)} sub-texts.")
         
@@ -39,33 +51,14 @@ class ChromaDBHandler:
         
         return all_splits
     
-    
-    def transform_text_to_date(self, date_str: str) -> str:
-        try:
-            date_obj = datetime.strptime(date_str, "%B %d, %Y")
-            return date_obj.strftime("%Y-%m-%d")
-        except ValueError as e:
-            self.logger.error(f"Date conversion error for '{date_str}': {e}")
-            return date_str
-
-
-    def transform_text_to_time(self, time_str: str) -> str:
-        try:
-            time_obj = datetime.strptime(time_str, "%H:%M")
-            return time_obj.strftime("%H:%M:%S")
-        except ValueError as e:
-            self.logger.error(f"Time conversion error for '{time_str}': {e}")
-            return time_str
-    
-    
+   
     # save splits to chromaDB.   
-    def add_splits_to_db(self, ids, documents, metadatas):
-        self.collection.add(
+    def _add_splits_to_db(self, ids, documents, metadatas):
+        self.collection.upsert(
             ids=ids,
             documents=documents,
             metadatas=metadatas
         )
-        
         self.logger.info(f"{ChromaDBHandler.__name__}: added {len(documents)} new chunks for id={metadatas[0]["news_id"]}")
 
         return
@@ -74,7 +67,7 @@ class ChromaDBHandler:
     # prepare ids, splited_docs and metadatas from result.
     def create_and_save_result_to_db(self, data, result):
         # prepare splitted documents.
-        all_splits = self.split_text_from_news(content=result.markdown)
+        all_splits = self._split_text_from_news(content=result.markdown)
         news_id = result.url.split("/")[-1].split(".")[0]
         
         ids = []
@@ -103,7 +96,7 @@ class ChromaDBHandler:
         self.logger.info("-"*50)
         
         #save data to chromadb.
-        self.add_splits_to_db(
+        self._add_splits_to_db(
             ids=ids,
             documents=all_splits,
             metadatas=metadatas
@@ -111,5 +104,23 @@ class ChromaDBHandler:
         
         return
     
+       # def _transform_text_to_date(self, date_str: str) -> str:
+    #     try:
+    #         date_obj = datetime.strptime(date_str, "%B %d, %Y")
+    #         return date_obj.strftime("%Y-%m-%d")
+    #     except ValueError as e:
+    #         self.logger.error(f"Date conversion error for '{date_str}': {e}")
+    #         return date_str
+
+
+    # def _transform_text_to_time(self, time_str: str) -> str:
+    #     try:
+    #         time_obj = datetime.strptime(time_str, "%H:%M")
+    #         return time_obj.strftime("%H:%M:%S")
+    #     except ValueError as e:
+    #         self.logger.error(f"Time conversion error for '{time_str}': {e}")
+    #         return time_str
+    
     # retriever.
+    
     

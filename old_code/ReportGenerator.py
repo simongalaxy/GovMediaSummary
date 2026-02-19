@@ -15,13 +15,16 @@ class ReportGenerator:
         
         # set up llm.
         self.model_name = os.getenv("OLLAMA_LLM_MODEL")
-        self.llm = ChatOllama(model=self.model_name, temperature=0.2)
+        self.llm = ChatOllama(
+            model=self.model_name, 
+            temperature=0.2
+            )
         
         # set up prompt template.
         self.template = PromptTemplate(
             input_variables=["sql", "rows"], 
             template="""
-            You are an expert analyst. 
+            You are an expert analyst. summarize all the docu
             
             SQL query: 
             {sql} 
