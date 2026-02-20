@@ -12,7 +12,7 @@ load_dotenv()
 
 class Metadata(BaseModel):
     title: str = Field(description="title of the content")
-    organization: list[str] = Field(description="subject organization(s) issued the content")
+    organizations: list[str] = Field(description="subject organization(s) issued the content")
     pub_date: date = Field(description="date issued the content")
     pub_time: time = Field(description="time issued the content")
     keywords: list[str] = Field(description="Maximun 5 content keywords")
