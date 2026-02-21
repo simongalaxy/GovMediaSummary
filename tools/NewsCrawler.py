@@ -10,13 +10,8 @@ from datetime import datetime, timedelta, date, time
 from dotenv import load_dotenv
 load_dotenv()
 
-class Metadata(BaseModel):
-    title: str = Field(description="title of the content")
-    organizations: list[str] = Field(description="subject organization(s) issued the content")
-    pub_date: date = Field(description="date issued the content")
-    pub_time: time = Field(description="time issued the content")
-    keywords: list[str] = Field(description="Maximun 5 content keywords")
-    summary: str = Field(description="Summary of key points from content")
+class Summary(BaseModel):
+    summary: str = Field(description="content summary")
     
    
 class NewsCrawler:
@@ -42,14 +37,14 @@ class NewsCrawler:
         )
         self.llm_extraction = LLMExtractionStrategy(
             llm_config=self.llm_config,
-            schema=Metadata.model_json_schema(),
+            schema=Summary.model_json_schema(),
             extraction_type="schema",
-            instruction="Extract the following items.",
-            chunk_token_threshold=1200,
+            instruction="Summarize the content no more than 700 words.",
+            chunk_token_threshold=1500,
             overlap_rate=0.1,
             apply_chunking=True,
             input_format="markdown",
-            extra_args={"temperature": 0.1, "max_tokens": 1000},
+            extra_args={"temperature": 0.1, "max_tokens": 1500},
             verbose=True
         )
         self.crawl_config_newsPage = CrawlerRunConfig(

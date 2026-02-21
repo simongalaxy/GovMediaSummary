@@ -40,19 +40,14 @@ class MediaAgent:
                 description="check any records from startDate to endDate in ChromaDB"
             ),
             StructuredTool.from_function(
-                func=self.DBHandler.check_records_by_organizations,
-                name="check_records_by_organizations",
-                description="check any records by organizations in ChromaDB"
+                func=self.DBHandler.check_records_by_keyword,
+                name="check_records_by_keyword",
+                description="check any records by keyword (e.g. organization, topic) in ChromaDB"
             ),
             StructuredTool.from_function(
-                func=self.DBHandler.check_records_by_topics,
-                name="check_records_by_topics",
-                description="check any records by topics in ChromaDB"
-            ),
-            StructuredTool.from_function(
-                func=self.DBHandler.check_records_by_organizations_dates,
-                name="check_records_by_organizations_dates",
-                description="check any records by organizations and dates in ChromaDB"
+                func=self.DBHandler.check_records_by_keyword_and_dates,
+                name="check_records_by_keyword_dates",
+                description="check any records by keyword and dates in ChromaDB"
             )
         ] # add more tools, e.g. retriever, summary generator.
         
@@ -66,7 +61,7 @@ class MediaAgent:
         )
     
     @tool
-    def get_current_date(_:str = "") -> str:
+    def get_current_date() -> str:
         """Return today's date in ISO format (YYYY-MM-DD)."""
         return date.today().isoformat()
      

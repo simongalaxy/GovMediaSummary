@@ -3,7 +3,7 @@ from chromadb.utils.embedding_functions.ollama_embedding_function import OllamaE
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from pprint import pformat
-from datetime import datetime, date
+from datetime import datetime, date, time
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -63,6 +63,25 @@ class ChromaDBHandler:
 
         return
     
+    
+    def _transform_text_to_date(self, date_str: str) -> str:
+        try:
+            date_obj = datetime.strptime(date_str, "%B %d, %Y")
+            return date_obj.strftime("%Y-%m-%d")
+        except ValueError as e:
+            self.logger.error(f"Date conversion error for '{date_str}': {e}")
+            return date_str
+    
+    
+    def _transform_text_to_time(self, time_str: str) -> str:
+        try:
+            time_obj = datetime.strptime(time_str, "%H:%M")
+            return time_obj.strftime("%H:%M:%S")
+        except ValueError as e:
+            self.logger.error(f"Time conversion error for '{time_str}': {e}")
+            return time_str
+    
+    
     def _generate_documents(self, data, result): 
         url = result.url
         all_splits = self._split_text_from_news(content=result.markdown)
@@ -76,11 +95,9 @@ class ChromaDBHandler:
             metadata={
                 "news_id": news_id,
                 "url": url,
-                "title": data.get("title"), #result.metadata["title"],
-                "pub_date": data.get("pub_date"), #transform_text_to_date(date_str=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
-                "pub_time": data.get("pub_time"), #transform_text_to_time(time_str=result.markdown.split("\n")[-3].split(" ")[-2]),
-                "organization": data.get("organization"),
-                "keywords": data.get("keywords"),
+                "title": result.metadata["title"],
+                "pub_date": self._date_to_unix(date_str=result.markdown.split("\n")[-4].split(", ", 1)[-1].strip()),
+                "pub_time": self._transform_text_to_time(time_str=result.markdown.split("\n")[-3].split(" ")[-2]),
                 "summary": data.get("summary"),
                 "chunk": i
             }
@@ -113,70 +130,53 @@ class ChromaDBHandler:
         
         return
 
-    # retriever.
+    # query retriever.
     def check_records_by_dates(self, start_date: str, end_date: str):
         return self.collection.get(
-             where={
-                "pub_date": {
-                    "$gte": start_date,
-                    "$lte": end_date
-                }
-            },
-            include=["documents"]
-        )
-    
-    
-    def check_records_by_organizations(self, organizations: list[str]):
-        return self.collection.get(
             include=["documents"],
-            where={"organizations": {"$in": organizations}}
+            where={
+                "$and": [
+                    {"pub_date": {"$gte": self._date_to_unix(start_date)} },
+                    {"pub_date": {"$lte": self._date_to_unix(end_date)} }
+                ]
+            }
         )
     
-      
-    def check_records_by_topics(self, keywords: list[str]):
-       return self.collection.get(
-           include=["documents"],
-           where={
-               "keywords": {
-                    "$in": keywords
-               }
-           }
-       )
-
-        
-    def check_records_by_organizations_dates(
-        self,
-        organizations: list[str],
-        start_date: str,
-        end_date: str
-    ):
-        # First filter by date
-        date_filtered = self.collection.get(
-            where={
-                "pub_date": {
-                    "$gte": start_date,
-                    "$lte": end_date
-                }
-            },
-            include=["documents", "metadatas"]
+    
+    def check_records_by_keyword(self, keyword: str):
+        return self.collection.query(
+            query_texts=[keyword],
+            include=["documents"],
+            where={ "summary": {"$contains": keyword} }
         )
+        
+    def check_records_by_keyword_and_dates(self, keyword: str, start_date: str, end_date: str):
+        return self.collection.query(
+            query_texts=[keyword],
+            include=["documents"],
+            where={
+                "$and": [
+                    {"pub_date": {"$gte": self._date_to_unix(start_date)} },
+                    {"pub_date": {"$lte": self._date_to_unix(end_date)} },
+                    {"summary": {"$contains": keyword} }
+                ]
+            }
+        )
+        
+    
+    # def _transform_date_to_num_format(self, date: str):
+    #     dt = datetime(
+    #         year=int(date[:4]),
+    #         month=int(date[4:6]),
+    #         day=int(date[-2:])
+    #     )
+    #     unix_day = int(dt.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()) 
+    #     # print(unix_day) 
+        
+    #     return unix_day
+    
 
-        # Now manually apply the organization filter
-        results = {
-            "ids": [],
-            "documents": [],
-            "metadatas": []
-        }
-
-        for doc_id, doc, meta in zip(
-            date_filtered["ids"],
-            date_filtered["documents"],
-            date_filtered["metadatas"]
-        ):
-            orgs = meta.get("organizations", [])
-            if any(org in orgs for org in organizations):
-                results["ids"].append(doc_id)
-                results["documents"].append(doc)
-                results["metadatas"].append(meta)
-
-        return results
+    def _date_to_unix(self, date_str: str) -> int: 
+        dt = datetime.strptime(date_str, "%B %d, %Y") 
+        
+        return int(dt.timestamp())
