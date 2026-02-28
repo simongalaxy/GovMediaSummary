@@ -2,22 +2,28 @@ from unittest import result
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode, BrowserConfig, MemoryAdaptiveDispatcher, LLMConfig, LLMExtractionStrategy
 from crawl4ai.content_scraping_strategy import LXMLWebScrapingStrategy
 
+from tools.DataProcessor import generate_date_urls, consolidate_news_urls
+
+
 from pprint import pformat
 import asyncio, json, re, os
 from pydantic import BaseModel, Field
 from typing import List
-from datetime import datetime, timedelta, date, time
+
 from dotenv import load_dotenv
 load_dotenv()
 
 class Summary(BaseModel):
-    summary: str = Field(description="content summary")
+    keywords: List[str] = Field(description="content keywords no more than 5 words")
+    organizations: List[str] = Field(description="all organizations mentioned in the content")
+    summary: str = Field(description="content summary no more than 700 words")
     
    
 class NewsCrawler:
-    def __init__(self, logger, db_handler):
+    def __init__(self, logger, db_handler, document_generator):
         self.logger = logger
         self.db_handler = db_handler
+        self.document_generator = document_generator
         self.browser_config = BrowserConfig(
             headless=True,
             text_mode=True,
@@ -39,7 +45,7 @@ class NewsCrawler:
             llm_config=self.llm_config,
             schema=Summary.model_json_schema(),
             extraction_type="schema",
-            instruction="Summarize the content no more than 700 words.",
+            instruction="Summarize the content no more than 700 words, extract keywords and organizations mentioned.",
             chunk_token_threshold=1500,
             overlap_rate=0.1,
             apply_chunking=True,
@@ -63,6 +69,7 @@ class NewsCrawler:
             max_session_permit=3
         )
     
+    
     # crawling functions.
     async def _crawl_date_pages(self, urls: list[str]):
         async with AsyncWebCrawler(
@@ -83,12 +90,7 @@ class NewsCrawler:
                 config=self.crawl_config_datePage,
                 dispatcher=self.dispatcher
             )
-        news_links = []
-        for result in results:
-            links = result.links.get("internal", [])
-            for link in links:
-                if re.search(pattern=r"P.*\.htm", string=link["href"]):
-                        news_links.append(link["href"])
+        news_links = consolidate_news_urls(results=results, logger=self.logger)
         
         return news_links
  
@@ -115,7 +117,8 @@ class NewsCrawler:
                 if result.success:
                     try:
                         data = json.loads(result.extracted_content)[0]
-                        self.db_handler.create_and_save_result_to_db(data=data, result=result)
+                        ids, metadatas, all_splits = self.document_generator.generate_documents(data=data, result=result)
+                        self.db_handler.add_documents_to_chromadb(ids=ids, metadatas=metadatas, documents=all_splits)
                     except Exception as e:
                         self.logger.error(f"JSON loading error: {e}")
                     if not data:
@@ -127,32 +130,9 @@ class NewsCrawler:
         return None
     
     
-    # data processing functions.
-    def _generate_date_range(self, startDate: str, endDate: str) -> list[str]:
-        start_date = datetime.strptime(startDate, "%Y%m%d")
-        end_date = datetime.strptime(endDate, "%Y%m%d")
-        
-        dates = []
-        current = start_date
-        while current <= end_date:
-            dates.append(current.strftime("%Y%m%d"))
-            current += timedelta(days=1)
-        
-        self.logger.info(f"Generated date range from {startDate} to {endDate}: {dates}")
-        
-        return dates
-    
-    
-    def _generate_date_urls(self, startDate: str, endDate: str) -> list[str]:
-        dates = self._generate_date_range(startDate=startDate, endDate=endDate)
-        urls = [f"https://www.info.gov.hk/gia/general/{date[:-2]}/{date[-2:]}.htm" for date in dates]
-        self.logger.info(f"Generated {len(urls)} date URLs: {urls}")
-        
-        return urls
-
 
     def fetch_news_by_dates(self, startDate: str, endDate: str) -> None:
-        urls = self._generate_date_urls(startDate=startDate, endDate=endDate)
+        urls = generate_date_urls(startDate=startDate, endDate=endDate, logger=self.logger)
     
         # crawl page links of press release.
         news_links = asyncio.run(self._crawl_date_pages(urls=urls))

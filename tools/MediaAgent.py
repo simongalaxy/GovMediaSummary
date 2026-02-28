@@ -5,6 +5,7 @@ from langchain_classic.load.dump import dumps
 
 
 from tools.NewsCrawler import NewsCrawler
+from tools.DocumentGenerator import DocumentGenerator
 from tools.ChromaDBHandler import ChromaDBHandler
 from tools.logger import Logger
 
@@ -23,9 +24,11 @@ class MediaAgent:
             )
         self.Logger = Logger(__name__).get_logger()
         self.DBHandler = ChromaDBHandler(logger=self.Logger)
+        self.document_generator = DocumentGenerator(logger=self.Logger)
         self.Crawler = NewsCrawler(
             logger=self.Logger, 
-            db_handler=self.DBHandler
+            db_handler=self.DBHandler,
+            document_generator=self.document_generator   # to be implemented
             )
         self.tools = [self.get_current_date]
         self.structuredtools = [
